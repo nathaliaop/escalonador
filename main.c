@@ -19,20 +19,27 @@ int main(int argc, char *argv[]) {
   // 0 - leitura
   // 1 - escrita
   int fd[4][2];
+  int id_pipe[4][2];
   int auxiliar_process_id = 0;
 
   for (int i = 0; i < 4; i++) {
+    pipe(id_pipe[i]);
     if (pipe(fd[i]) == -1) {
       printf("Could not create pipe\n");
       return 1;
     };
   }
-    
+  
   for (int i = 0; i < 4; i++) {
     int id = fork();
     if (id == 0) {
+      int my_id = getpid();
+      // printf("I am %d and my id is: %d\n", i, my_id);
+      write(id_pipe[i][1], &my_id, sizeof(int));
       for (int j = 0; j < 4; j++) {
         close(fd[j][1]);
+        close(id_pipe[i][0]);
+        close(id_pipe[i][1]);
       }
             
       int n_processes;
@@ -66,7 +73,13 @@ int main(int argc, char *argv[]) {
     auxiliar_process_id++;
   }
 
+  int child_id[4];
+
   for (int i = 0; i < 4; i++) {
+    read(id_pipe[i][0], &child_id[i], sizeof(int));
+    // printf("%d and %d\n", i, child_id[i]);
+    close(id_pipe[i][0]);
+    close(id_pipe[i][1]);
     close(fd[i][0]);
   }
 
