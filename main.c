@@ -10,6 +10,14 @@ const long ONE_SECOND = 6e8;
 // 2 - medio
 // 3 - demorado
 
+static void handle_signusr1(int sig, siginfo_t *siginfo, void* context) {
+  printf("I am work stealing %d\n", getpid());
+}
+
+static void handle_signusr2(int sig, siginfo_t *siginfo, void* context) {
+  printf("I am not work stealing %d\n", getpid());
+}
+
 int main(int argc, char *argv[]) {
   if (argc > 1) {
     // -work-stealing
@@ -19,32 +27,36 @@ int main(int argc, char *argv[]) {
   // 0 - leitura
   // 1 - escrita
   int fd[4][2];
-  int id_pipe[4][2];
   int auxiliar_process_id = 0;
+  int work_steal[2];
+  pipe(work_steal);
 
   for (int i = 0; i < 4; i++) {
-    pipe(id_pipe[i]);
     if (pipe(fd[i]) == -1) {
       printf("Could not create pipe\n");
       return 1;
     };
   }
-  
+
   for (int i = 0; i < 4; i++) {
     int id = fork();
     if (id == 0) {
-      int my_id = getpid();
-      // printf("I am %d and my id is: %d\n", i, my_id);
-      write(id_pipe[i][1], &my_id, sizeof(int));
+      struct sigaction sa = { 0 };
+      sa.sa_sigaction = *handle_signusr1;
+      sa.sa_flags |= SA_SIGINFO;
+      sigaction(SIGUSR1, &sa, NULL);
+
+      struct sigaction sa2 = { 0 };
+      sa2.sa_sigaction = *handle_signusr2;
+      sa2.sa_flags |= SA_SIGINFO;
+      sigaction(SIGUSR2, &sa2, NULL);
+
       for (int j = 0; j < 4; j++) {
         close(fd[j][1]);
-        close(id_pipe[i][0]);
-        close(id_pipe[i][1]);
       }
-            
+
       int n_processes;
       read(fd[auxiliar_process_id][0], &n_processes, sizeof(int));
-      // printf("Quantity of processes: %d\n", n_processes);
 
       char process_type;
       for (int j = 0; j < n_processes; j++) {
@@ -67,19 +79,20 @@ int main(int argc, char *argv[]) {
 
       printf("%d finalizou seus processos.\n", auxiliar_process_id);
 
+      int pid = getpid();
+      write(work_steal[1], &pid, sizeof(int));
+      pause();
+
+      close(work_steal[0]);
+      close(work_steal[1]);
+
       return 0;
     }
 
     auxiliar_process_id++;
   }
 
-  int child_id[4];
-
   for (int i = 0; i < 4; i++) {
-    read(id_pipe[i][0], &child_id[i], sizeof(int));
-    // printf("%d and %d\n", i, child_id[i]);
-    close(id_pipe[i][0]);
-    close(id_pipe[i][1]);
     close(fd[i][0]);
   }
 
@@ -111,10 +124,25 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  int finished_processes = 0;
+  for (int i = 0;  i < 4; i++) {
+    int id;
+    read(work_steal[0], &id, sizeof(int));
+    finished_processes++;
+    if (finished_processes < 4) {
+      printf("I will sent %d into work stealing.\n", id);
+      kill(id, SIGUSR1);
+    } else {
+      kill(id, SIGUSR2);
+    }  
+  }
+
+  close(work_steal[0]);
+  close(work_steal[1]);
+
   for (int i = 0; i < 4; i++) {
     close(fd[i][1]);
   }
-
   close(file);
 
   wait(NULL);
