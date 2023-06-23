@@ -11,6 +11,13 @@ const long ONE_SECOND = 6e8;
 // 3 - demorado
 
 int main(int argc, char *argv[]) {
+
+    if (argc > 1) {
+      // -work-stealing
+      printf("You passed the flag: %s\n", argv[1]);
+    }
+
+
     // 0 - leitura
     // 1 - escrita
     int fd[4][2];
