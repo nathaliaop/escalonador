@@ -6,7 +6,7 @@
 #include <signal.h>
 #include<time.h>
 
-const long ONE_SECOND = 3e8;
+const long ONE_SECOND = 6e8;
 
 // 1 - rapido
 // 2 - medio
@@ -47,10 +47,7 @@ void execute_process(char process_type) {
   printf("Esperei %d segundos\n", seconds);
 }
 
-// entra no modo roubo de trabalho
-static void handle_signusr1(int sig, siginfo_t *siginfo, void* context) {
-  // printf("I am work stealing %d\n", getpid());
- 
+static void enter_work_stealing_mode(int sig, siginfo_t *siginfo, void* context) {
   int ids[4] = {0, 1, 2, 3};
   shuffle(ids, 4);
 
@@ -60,7 +57,6 @@ static void handle_signusr1(int sig, siginfo_t *siginfo, void* context) {
     while (process_type != '0') {
       write(fd[ids[i]][1], &steal, sizeof(char));
       read(fd[ids[i]][0], &process_type, sizeof(char));
-      // printf("Process type %c\n", process_type);
 
       if (process_type != '0') {
         execute_process(process_type);
@@ -70,20 +66,15 @@ static void handle_signusr1(int sig, siginfo_t *siginfo, void* context) {
 
 }
 
-// não entra no modo roubo de trabalho
-static void handle_signusr2(int sig, siginfo_t *siginfo, void* context) {
-  // printf("I am not work stealing %d\n", getpid());
+static void dont_enter_work_stealing_mode(int sig, siginfo_t *siginfo, void* context) {
+  return;
 }
 
 int main(int argc, char *argv[]) {
   if (argc > 1) {
-    // -work-stealing
     work_stealing_mode = 1;
-    // printf("You passed the flag: %s\n", argv[1]);
   }
 
-  // 0 - leitura
-  // 1 - escrita
   int auxiliar_process_id = 0;
   int work_steal[2];
   if (work_stealing_mode == 1) {
@@ -103,12 +94,12 @@ int main(int argc, char *argv[]) {
     int id = fork();
     if (id == 0) {
       struct sigaction sa = { 0 };
-      sa.sa_sigaction = *handle_signusr1;
+      sa.sa_sigaction = *enter_work_stealing_mode;
       sa.sa_flags |= SA_SIGINFO;
       sigaction(SIGUSR1, &sa, NULL);
 
       struct sigaction sa2 = { 0 };
-      sa2.sa_sigaction = *handle_signusr2;
+      sa2.sa_sigaction = *dont_enter_work_stealing_mode;
       sa2.sa_flags |= SA_SIGINFO;
       sigaction(SIGUSR2, &sa2, NULL);
 
@@ -122,8 +113,6 @@ int main(int argc, char *argv[]) {
         execute_process(process_type);
       }
 
-      // printf("%d finalizou seus processos.\n", auxiliar_process_id);
-      
       if (work_stealing_mode == 1) {
         int pid = getpid();
         write(work_steal[1], &pid, sizeof(int));
@@ -189,7 +178,6 @@ int main(int argc, char *argv[]) {
       read(work_steal[0], &id, sizeof(int));
       finished_processes++;
       if (finished_processes < 4) {
-        // printf("I will sent %d into work stealing.\n", id);
         kill(id, SIGUSR1);
       } else {
         kill(id, SIGUSR2);
