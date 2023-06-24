@@ -1,8 +1,10 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <wait.h>
 #include <fcntl.h>
 #include <signal.h>
+#include<time.h>
 
 const long ONE_SECOND = 3e8;
 
@@ -12,8 +14,26 @@ const long ONE_SECOND = 3e8;
 
 int fd[4][2];
 int ta[4][2];
+int sz[4][2];
 int work_stealing_mode = 0;
 int total_time = 0;
+
+void swap(int* a, int* b) {
+  int temp = *a;
+  *a = *b;
+  *b = temp;
+}
+
+// Fisher–Yates shuffle algorithm
+void shuffle(int arr[], int n) {
+  srand(time(NULL));
+  
+  for (int i = n-1; i >= 0; i--) {
+    int j = rand() % (i+1);
+
+    swap(&arr[i], &arr[j]);
+  }
+}
 
 void execute_process(char process_type) {
   int seconds = 0;
@@ -30,13 +50,16 @@ void execute_process(char process_type) {
 // entra no modo roubo de trabalho
 static void handle_signusr1(int sig, siginfo_t *siginfo, void* context) {
   // printf("I am work stealing %d\n", getpid());
-  
+ 
+  int ids[4] = {0, 1, 2, 3};
+  shuffle(ids, 4);
+
   for (int i = 0; i < 4; i++) {
     char steal = '0';
     char process_type = '4';
     while (process_type != '0') {
-      write(fd[i][1], &steal, sizeof(char));
-      read(fd[i][0], &process_type, sizeof(char));
+      write(fd[ids[i]][1], &steal, sizeof(char));
+      read(fd[ids[i]][0], &process_type, sizeof(char));
       // printf("Process type %c\n", process_type);
 
       if (process_type != '0') {
@@ -63,9 +86,12 @@ int main(int argc, char *argv[]) {
   // 1 - escrita
   int auxiliar_process_id = 0;
   int work_steal[2];
-  pipe(work_steal);
+  if (work_stealing_mode) {
+    pipe(work_steal);
+  }
 
   for (int i = 0; i < 4; i++) {
+    pipe(sz[i]);
     pipe(ta[i]);
     if (pipe(fd[i]) == -1) {
       printf("Could not create pipe\n");
@@ -87,7 +113,7 @@ int main(int argc, char *argv[]) {
       sigaction(SIGUSR2, &sa2, NULL);
 
       int n_processes;
-      read(fd[auxiliar_process_id][0], &n_processes, sizeof(int));
+      read(sz[auxiliar_process_id][0], &n_processes, sizeof(int));
 
       char process_type;
       for (int j = 0; j < n_processes; j++) {
@@ -114,6 +140,8 @@ int main(int argc, char *argv[]) {
         close(fd[j][1]);
         close(ta[j][0]);
         close(ta[j][1]);
+        close(sz[j][0]);
+        close(sz[j][1]);
       }
 
       return 0;
@@ -147,7 +175,7 @@ int main(int argc, char *argv[]) {
   }
 
   for (int i = 0; i < 4; i++) {
-    write(fd[i][1], &nxt[i], sizeof(int));
+    write(sz[i][1], &nxt[i], sizeof(int));
         
     for (int j = 0; j < nxt[i]; j++) {
       write(fd[i][1], &processes_type[i][j], sizeof(char));
@@ -174,6 +202,8 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < 4; i++) {
     close(fd[i][1]);
+    close(sz[i][0]);
+    close(sz[i][1]);
   }
   close(file);
 
