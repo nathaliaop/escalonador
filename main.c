@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
   // 1 - escrita
   int auxiliar_process_id = 0;
   int work_steal[2];
-  if (work_stealing_mode) {
+  if (work_stealing_mode == 1) {
     pipe(work_steal);
   }
 
@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
 
       // printf("%d finalizou seus processos.\n", auxiliar_process_id);
       
-      if (work_stealing_mode) {
+      if (work_stealing_mode == 1) {
         int pid = getpid();
         write(work_steal[1], &pid, sizeof(int));
         pause();
@@ -182,9 +182,9 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (work_stealing_mode) {
+  if (work_stealing_mode == 1) {
     int finished_processes = 0;
-    for (int i = 0;  i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
       int id;
       read(work_steal[0], &id, sizeof(int));
       finished_processes++;
